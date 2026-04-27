@@ -1,4 +1,4 @@
-name: Secure Pipeline
+name: Secure CI/CD Pipeline
 
 on:
   push:
@@ -13,11 +13,17 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 🔐 Secret Scanning
-      - name: Run Gitleaks (Secret Scan)
+      # 🔐 Secret Scanning (Gitleaks - STABLE MODE)
+      - name: Run Gitleaks Secret Scan
         uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --verbose --redact --no-git --exit-code 1
 
-      # 📦 Install Trivy (FIXED VERSION)
+      # 🐳 Install Docker (already present in runner but safe check)
+      - name: Verify Docker
+        run: docker --version
+
+      # 📦 Install Trivy (vulnerability scanner)
       - name: Install Trivy
         run: |
           sudo apt-get update
@@ -25,9 +31,9 @@ jobs:
           wget https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.deb
           sudo dpkg -i trivy_0.70.0_Linux-64bit.deb
 
-      # 🧪 Scan filesystem for vulnerabilities
+      # 🧪 Scan filesystem (dependencies + code)
       - name: Scan Repository (Trivy FS)
-        run: trivy fs . --exit-code 1 --severity CRITICAL
+        run: trivy fs . --exit-code 1 --severity CRITICAL,HIGH
 
       # 🐳 Build Docker image
       - name: Build Docker Image
@@ -35,4 +41,4 @@ jobs:
 
       # 🚨 Scan Docker image
       - name: Scan Docker Image (Trivy)
-        run: trivy image secure-app --exit-code 1 --severity CRITICAL
+        run: trivy image secure-app --exit-code 1 --severity CRITICAL,HIGH
