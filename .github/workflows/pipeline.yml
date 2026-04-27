@@ -1,28 +1,38 @@
 name: Secure Pipeline
 
-on: [push]
+on:
+  push:
+  pull_request:
 
 jobs:
   security:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+      # 📥 Checkout code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Secret Scan
-      uses: gitleaks/gitleaks-action@v2
+      # 🔐 Secret Scanning
+      - name: Run Gitleaks (Secret Scan)
+        uses: gitleaks/gitleaks-action@v2
 
-    - name: Install Trivy
-      run: |
-        sudo apt-get install -y wget
-        wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb
-        sudo dpkg -i trivy_0.50.0_Linux-64bit.deb
+      # 📦 Install Trivy (FIXED VERSION)
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.70.0_Linux-64bit.deb
 
-    - name: Scan code
-      run: trivy fs . --exit-code 1 --severity CRITICAL
+      # 🧪 Scan filesystem for vulnerabilities
+      - name: Scan Repository (Trivy FS)
+        run: trivy fs . --exit-code 1 --severity CRITICAL
 
-    - name: Build Docker image
-      run: docker build -t secure-app .
+      # 🐳 Build Docker image
+      - name: Build Docker Image
+        run: docker build -t secure-app .
 
-    - name: Scan image
-      run: trivy image secure-app --exit-code 1 --severity CRITICAL
+      # 🚨 Scan Docker image
+      - name: Scan Docker Image (Trivy)
+        run: trivy image secure-app --exit-code 1 --severity CRITICAL
