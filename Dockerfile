@@ -16,7 +16,7 @@ RUN apt-get update && apt-get upgrade -y \
 COPY requirements.txt .
 
 # Upgrade pip first (important for security fixes)
-RUN pip install --no-cache-dir --upgrade pip \
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r requirements.txt
 
 # 📥 Copy application code
