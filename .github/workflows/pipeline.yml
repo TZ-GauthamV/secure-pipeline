@@ -33,7 +33,7 @@ jobs:
 
       # 🧪 Trivy FS Scan (Code + deps)
       - name: Trivy FS Scan
-        uses: aquasecurity/trivy-action@v0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .
@@ -43,7 +43,7 @@ jobs:
 
       # 🧾 SBOM Generation
       - name: Generate SBOM
-        uses: aquasecurity/trivy-action@v0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           format: cyclonedx
@@ -55,7 +55,7 @@ jobs:
 
       # 🚨 Image Scan (FAIL HARD)
       - name: Trivy Image Scan
-        uses: aquasecurity/trivy-action@v0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: secure-app:${{ github.sha }}
           severity: HIGH,CRITICAL
