@@ -2,43 +2,100 @@ name: Secure CI/CD Pipeline
 
 on:
   push:
+    branches: [ "main" ]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   security-gates:
     runs-on: ubuntu-latest
 
     steps:
-      # 📥 Checkout code
+      # 📥 Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 🔐 Secret Scanning (Gitleaks - STRICT GATE)
-      - name: Run Gitleaks Secret Scan
+      # 🔐 Secret Scanning (FAIL HARD)
+      - name: Gitleaks Secret Scan
         uses: gitleaks/gitleaks-action@v2
         with:
           args: detect --source . --verbose --redact --exit-code 1
 
-      # 🐳 Verify Docker
-      - name: Check Docker Version
-        run: docker --version
-
-      # 📦 Install Trivy
-      - name: Install Trivy
+      # 📦 Dependency Policy Check
+      - name: Enforce Dependency Version Pinning
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.deb
-          sudo dpkg -i trivy_0.70.0_Linux-64bit.deb
+          if grep -E '>=|latest|\*' requirements.txt; then
+            echo "❌ Insecure dependency versioning detected"
+            exit 1
+          fi
 
-      # 🧪 Scan filesystem (dependencies + OS packages)
-      - name: Trivy FS Scan (Security Gate)
-        run: trivy fs . --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
+      # 🧪 Trivy FS Scan (Code + deps)
+      - name: Trivy FS Scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+      # 🧾 SBOM Generation
+      - name: Generate SBOM
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: fs
+          format: cyclonedx
+          output: sbom.json
 
       # 🐳 Build Docker Image
       - name: Build Docker Image
-        run: docker build -t secure-app .
+        run: docker build -t secure-app:${{ github.sha }} .
 
-      # 🚨 Scan Docker Image (STRICT GATE)
-      - name: Trivy Image Scan (Security Gate)
-        run: trivy image secure-app --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
+      # 🚨 Image Scan (FAIL HARD)
+      - name: Trivy Image Scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: secure-app:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+  deploy:
+    needs: security-gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 🔑 Azure Login (Service Principal)
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 🔐 Login to Azure Container Registry
+      - name: ACR Login
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      # 🐳 Build & Push Image
+      - name: Build and Push Image
+        run: |
+          IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/secure-app:${{ github.sha }}
+          docker build -t $IMAGE .
+          docker push $IMAGE
+
+      # 🚀 Deploy (PRIVATE - NO PUBLIC ACCESS)
+      - name: Deploy to Azure Container Apps
+        run: |
+          IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/secure-app:${{ github.sha }}
+
+          az containerapp up \
+            --name secure-app \
+            --resource-group secure-pipeline-rg \
+            --environment secure-env \
+            --image $IMAGE \
+            --target-port 80 \
+            --ingress internal

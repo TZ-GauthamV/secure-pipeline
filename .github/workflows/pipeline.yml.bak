@@ -1,0 +1,44 @@
+name: Secure CI/CD Pipeline
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  security-gates:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 📥 Checkout code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 🔐 Secret Scanning (Gitleaks - STRICT GATE)
+      - name: Run Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --verbose --redact --exit-code 1
+
+      # 🐳 Verify Docker
+      - name: Check Docker Version
+        run: docker --version
+
+      # 📦 Install Trivy
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.70.0_Linux-64bit.deb
+
+      # 🧪 Scan filesystem (dependencies + OS packages)
+      - name: Trivy FS Scan (Security Gate)
+        run: trivy fs . --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
+
+      # 🐳 Build Docker Image
+      - name: Build Docker Image
+        run: docker build -t secure-app .
+
+      # 🚨 Scan Docker Image (STRICT GATE)
+      - name: Trivy Image Scan (Security Gate)
+        run: trivy image secure-app --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
